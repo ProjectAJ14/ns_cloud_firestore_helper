@@ -28,6 +28,12 @@
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>This allows app to record videos </string>
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>This allows app to save photo to your photos </string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>This allows app to upload photos from your Photos.</string>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

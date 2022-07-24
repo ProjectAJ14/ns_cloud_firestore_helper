@@ -39,64 +39,99 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   File? _file;
   File? _compressedFile;
+  File? _thumbnailFile;
 
   void _pickImage() async {
-    EasyLoading.show(status: 'Loading...');
     var pickedFile = await ImagePicker().pickImage(source: ImageSource.gallery);
-    setState(() {
-      if (pickedFile != null) {
-        _file = File(pickedFile.path);
-      }
-    });
-    if (_file != null) {
-      var compressedFile = await compressImage(_file!);
+    _processImage(pickedFile);
+  }
+
+  void _clickImage() async {
+    var pickedFile = await ImagePicker().pickImage(source: ImageSource.camera);
+    _processImage(pickedFile);
+  }
+
+  _processImage(pickedFile) async {
+    EasyLoading.show(status: 'Loading...');
+    try {
       setState(() {
-        _compressedFile = compressedFile;
+        if (pickedFile != null) {
+          _file = File(pickedFile.path);
+        }
       });
+      if (_file != null) {
+        var compressedFile = await ImageService.getCompressedImage(
+          _file!,
+          withIsolates: true,
+        );
+        var thumbnailFile = await ImageService.getCompressedImage(
+          _file!,
+          quality: 1,
+          withIsolates: true,
+        );
+        setState(() {
+          _compressedFile = compressedFile;
+          _thumbnailFile = thumbnailFile;
+        });
+      }
+    } on Exception catch (e, s) {
+      print(e);
+      print(s);
+    } finally {
+      EasyLoading.dismiss();
     }
-    EasyLoading.dismiss();
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
       appBar: AppBar(
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
         title: Text(widget.title),
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: ListView(
-          children: <Widget>[
-            _buildFileWidget(_file),
-            _buildFileWidget(_compressedFile),
-          ],
-        ),
+      body: PageView(
+        controller: PageController(viewportFraction: 0.9),
+        children: <Widget>[
+          _buildFileWidget(_file, 'Original'),
+          _buildFileWidget(_compressedFile, 'Compressed'),
+          _buildFileWidget(_thumbnailFile, 'Thumbnail'),
+        ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _pickImage,
-        tooltip: 'Pick Image',
-        child: const Icon(Icons.image_search),
+      floatingActionButton: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          FloatingActionButton(
+            onPressed: _pickImage,
+            tooltip: 'Pick Image',
+            child: const Icon(Icons.image_search),
+          ),
+          FloatingActionButton(
+            onPressed: _clickImage,
+            tooltip: 'Click Image',
+            child: const Icon(Icons.camera_alt_rounded),
+          ),
+        ],
       ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }
 
-  _buildFileWidget(File? file) {
+  _buildFileWidget(File? file, String label) {
     if (file != null) {
-      return Stack(
-        alignment: Alignment.bottomCenter,
-        children: [
-          Image.file(file),
-          _buildLabelWidget('Size: ${filesize(file.lengthSync())}'),
-        ],
+      return Container(
+        color: Colors.black.withOpacity(0.1),
+        child: Column(
+          children: [
+            _buildLabelWidget(label),
+            Flexible(
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Image.file(file),
+                  _buildLabelWidget(filesize(file.lengthSync())),
+                ],
+              ),
+            ),
+          ],
+        ),
       );
     }
 
