@@ -54,9 +54,8 @@ class CloudFirestoreHelper {
   }) async {
     debugPrint("compressAndUploadFile start");
     var stopwatch = Stopwatch()..start();
-    final fileCompressed = await ImageService.getCompressedImage(
-      file,
-      withIsolates: true,
+    final fileCompressed = await ImageService.compressImage(
+      file.path,
       quality: quality,
     );
 
