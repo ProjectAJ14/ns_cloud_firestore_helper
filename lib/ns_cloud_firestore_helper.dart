@@ -4,6 +4,9 @@ import 'dart:io';
 
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:ns_cloud_firestore_helper/utils/constants.dart';
+
+import 'ns_cloud_firestore_helper.dart';
 
 export 'src/image_service.dart';
 
@@ -13,19 +16,27 @@ class CloudFirestoreHelper {
   static Future<String> uploadImageFile(
     File file,
     String storageLocation, {
-    int quality = 85,
+    int quality = defaultQuality,
     Function(String)? onProgress,
-    SettableMetadata? settableMetadata,
+    Map<String, String> customMetadata = const {},
   }) async {
     debugPrint("uploadFile start");
     var stopwatch = Stopwatch()..start();
+
+    var compressedFile = await ImageService.compressImage(
+      file.path,
+      quality: quality,
+    );
 
     Reference storageReference =
         FirebaseStorage.instance.ref().child(storageLocation);
 
     final UploadTask uploadTask = storageReference.putFile(
-      file,
-      settableMetadata,
+      compressedFile,
+      SettableMetadata(
+        contentLanguage: 'en',
+        customMetadata: customMetadata,
+      ),
     );
 
     uploadTask.snapshotEvents.listen((event) {
