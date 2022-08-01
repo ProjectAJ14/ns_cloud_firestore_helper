@@ -66,7 +66,6 @@ class _MyHomePageState extends State<MyHomePage> {
       if (_file != null) {
         var compressedFile = await ImageService.compressImage(
           _file!.path,
-          quality: 100,
           compressWith: CompressWith.compute,
         );
         var thumbnailFile = await ImageService.compressImage(

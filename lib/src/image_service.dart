@@ -6,7 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as image_lib;
 import 'package:path_provider/path_provider.dart';
 
-const int _defaultQuality = 85;
+import '../utils/constants.dart';
 
 enum CompressWith {
   isolate,
@@ -48,8 +48,8 @@ class ImageService {
   /// and return compressed image.
   static Future<File> compressImage(
     String path, {
-    int quality = _defaultQuality,
-    CompressWith compressWith = CompressWith.isolate,
+    int quality = defaultQuality,
+    CompressWith compressWith = CompressWith.compute,
   }) async {
     final Stopwatch stopwatch = Stopwatch()..start();
     File compressedFile;
@@ -99,7 +99,7 @@ class ImageService {
   static Future<File> _compressImage(
     String path, {
     required String compressedImagePath,
-    int quality = _defaultQuality,
+    int quality = defaultQuality,
   }) async {
     image_lib.Image? image =
         image_lib.decodeImage(File(path).readAsBytesSync());
