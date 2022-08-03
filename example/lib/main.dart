@@ -2,7 +2,7 @@ import 'dart:developer' as developer;
 import 'dart:io';
 
 import 'package:filesize/filesize.dart';
-// ignore: depend_on_referenced_packages
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_easyloading/flutter_easyloading.dart';
@@ -16,6 +16,8 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  final cred = await FirebaseAuth.instance.signInAnonymously();
+  debugPrint("usr.uid: ${cred.user?.uid}");
   runApp(const MyApp());
 }
 
@@ -46,8 +48,50 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  File? _file;
-  UploadStats? uploadStats;
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.title),
+      ),
+      body: PageView(
+        controller: PageController(),
+        children: const [
+          ImageUploadWidget(
+            label: 'Compressed',
+            compress: true,
+          ),
+          ImageUploadWidget(
+            label: 'Original',
+            compress: false,
+          ),
+        ],
+      ),
+      // This trailing comma makes auto-formatting nicer for build methods.
+    );
+  }
+}
+
+class ImageUploadWidget extends StatefulWidget {
+  const ImageUploadWidget({
+    Key? key,
+    required this.label,
+    required this.compress,
+  }) : super(key: key);
+
+  final String label;
+  final bool compress;
+
+  @override
+  State<ImageUploadWidget> createState() => _ImageUploadWidgetState();
+}
+
+class _ImageUploadWidgetState extends State<ImageUploadWidget> {
+  FileStats? fileStatsOG;
+
+  String get label => widget.label;
+
+  bool get compress => widget.compress;
 
   void _pickImage() async {
     var pickedFile = await ImagePicker().pickImage(source: ImageSource.gallery);
@@ -63,30 +107,44 @@ class _MyHomePageState extends State<MyHomePage> {
     Stopwatch stopwatch = Stopwatch()..start();
     EasyLoading.show(status: 'Loading...');
     try {
-      setState(() {
-        if (pickedFile != null) {
-          _file = File(pickedFile.path);
-        }
-      });
-      var downloadUrl = await CloudFirestoreHelper.uploadFile(
-        _file!,
-        'images/',
-        onProgress: (data) {
-          EasyLoading.show(status: '$data% uploaded');
-        },
-      );
-      stopwatch.stop();
-
-      setState(() {
-        uploadStats = UploadStats(
-          size: _file!.lengthSync(),
-          timeTakenToUpload: stopwatch.elapsed.inMilliseconds,
-          url: downloadUrl,
-          compressedSize: 0,
-          timeTakenToCompressed: 0,
-          totalTimeTaken: stopwatch.elapsed.inMilliseconds,
+      if (pickedFile != null) {
+        fileStatsOG = FileStats(File(pickedFile.path));
+        fileStatsOG!.size = fileStatsOG!.file.lengthSync();
+        setState(() {});
+      }
+      if (compress) {
+        var compressedFile = await ImageService.compressImage(
+          fileStatsOG!.file.path,
         );
-      });
+        fileStatsOG!.compressedSize = compressedFile.lengthSync();
+        fileStatsOG!.url = await CloudFirestoreHelper.uploadImageFile(
+          compressedFile,
+          'images/',
+          onProgress: (data) {
+            debugPrint('progress: $data');
+            EasyLoading.showProgress(
+              double.parse(data) / 100,
+              status: 'Uploading...',
+            );
+          },
+        );
+      } else {
+        fileStatsOG!.url = await CloudFirestoreHelper.uploadFile(
+          fileStatsOG!.file,
+          'images/',
+          onProgress: (String data) {
+            debugPrint('progress: $data');
+            EasyLoading.showProgress(
+              double.parse(data) / 100,
+              status: 'Uploading...',
+            );
+          },
+        );
+      }
+
+      stopwatch.stop();
+      fileStatsOG!.timeTaken = stopwatch.elapsed;
+      setState(() {});
     } on Exception catch (e, s) {
       developer.log(
         '_uploadImage',
@@ -98,76 +156,107 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.title),
-      ),
-      body: PageView(
-        controller: PageController(),
-        children: <Widget>[
-          _buildFileWidget(_file, 'Original', uploadStats),
-        ],
-      ),
-      floatingActionButton: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          FloatingActionButton(
-            onPressed: _pickImage,
-            tooltip: 'Pick Image',
-            child: const Icon(Icons.image_search),
-          ),
-          FloatingActionButton(
-            onPressed: _clickImage,
-            tooltip: 'Click Image',
-            child: const Icon(Icons.camera_alt_rounded),
-          ),
-        ],
-      ), // This trailing comma makes auto-formatting nicer for build methods.
-    );
-  }
-
   _buildFileWidget(
-    File? file,
     String label,
-    UploadStats? uploadStats,
+    FileStats? fileStats,
   ) {
-    if (file != null) {
+    if (fileStatsOG == null) {
+      return Column(
+        children: [
+          _buildLabelWidget(
+            '$label : Select File',
+            fontSize: 30,
+          ),
+          const Spacer(),
+          const SizedBox(
+            height: 16,
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                FloatingActionButton(
+                  onPressed: _pickImage,
+                  tooltip: 'Pick Image',
+                  child: const Icon(Icons.image_search),
+                ),
+                FloatingActionButton(
+                  onPressed: _clickImage,
+                  tooltip: 'Click Image',
+                  child: const Icon(Icons.camera_alt_rounded),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    } else {
       return Container(
-        color: Colors.black.withOpacity(0.8),
+        color: Colors.black,
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _buildLabelWidget(label),
+            _buildLabelWidget(
+              label,
+              fontSize: 16,
+            ),
+            if (fileStats!.size != 0)
+              _buildLabelWidget(filesize(fileStatsOG!.size)),
             Flexible(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.start,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _buildLabelWidget(filesize(file.lengthSync())),
-                  Flexible(
-                    child: Image.file(
-                      file,
+              child: fileStatsOG!.url.isNotEmpty
+                  ? Image.network(
+                      fileStatsOG!.url,
+                      fit: BoxFit.fitWidth,
+                    )
+                  : Image.file(
+                      fileStatsOG!.file,
                       fit: BoxFit.fitWidth,
                     ),
+            ),
+            _buildLabelWidget(
+              'Time taken: ${fileStatsOG!.timeTaken.inSeconds}Seconds',
+              fontSize: 12,
+            ),
+            _buildLabelWidget(
+              'url : ${fileStatsOG!.url}',
+              fontSize: 10,
+            ),
+            if (compress)
+              _buildLabelWidget(
+                'Compressed Size: ${filesize(fileStatsOG!.compressedSize)}',
+                fontSize: 10,
+              ),
+            const Spacer(),
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  FloatingActionButton(
+                    onPressed: _pickImage,
+                    tooltip: 'Pick Image',
+                    child: const Icon(Icons.image_search),
+                  ),
+                  FloatingActionButton(
+                    onPressed: _clickImage,
+                    tooltip: 'Click Image',
+                    child: const Icon(Icons.camera_alt_rounded),
                   ),
                 ],
               ),
-            ),
-            _buildLabelWidget(
-              'Upload Stats',
-            ),
+            )
           ],
         ),
       );
     }
-
-    return _buildLabelWidget('No Image Selected');
   }
 
-  _buildLabelWidget(String label) {
+  _buildLabelWidget(
+    String label, {
+    double fontSize = 12,
+  }) {
     return Container(
       color: Colors.black.withOpacity(0.5),
       child: Padding(
@@ -176,27 +265,26 @@ class _MyHomePageState extends State<MyHomePage> {
           label,
           style: Theme.of(context).textTheme.headline3!.copyWith(
                 color: Colors.white,
+                fontSize: fontSize,
               ),
         ),
       ),
     );
   }
+
+  @override
+  Widget build(BuildContext context) {
+    return _buildFileWidget(label, fileStatsOG);
+  }
 }
 
-class UploadStats {
-  String url;
-  int size;
-  int timeTakenToCompressed;
-  int compressedSize;
-  int timeTakenToUpload;
-  int totalTimeTaken;
+class FileStats {
+  File file;
 
-  UploadStats({
-    required this.url,
-    required this.size,
-    required this.timeTakenToCompressed,
-    required this.compressedSize,
-    required this.timeTakenToUpload,
-    required this.totalTimeTaken,
-  });
+  String url = '';
+  int size = 0;
+  int compressedSize = 0;
+  Duration timeTaken = const Duration(seconds: 0);
+
+  FileStats(this.file);
 }
