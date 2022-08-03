@@ -77,7 +77,6 @@ class CloudFirestoreHelper {
   static Future<String> uploadFile(
     File file,
     String storageLocation, {
-    int quality = defaultQuality,
     Function(String)? onProgress,
     Map<String, String> customMetadata = const {},
   }) async {

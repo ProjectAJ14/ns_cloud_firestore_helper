@@ -2,12 +2,20 @@ import 'dart:developer' as developer;
 import 'dart:io';
 
 import 'package:filesize/filesize.dart';
+// ignore: depend_on_referenced_packages
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:ns_cloud_firestore_helper/ns_cloud_firestore_helper.dart';
 
-void main() {
+import 'firebase_options.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   runApp(const MyApp());
 }
 
@@ -39,23 +47,20 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   File? _file;
-  File? _compressedFile;
-  File? _thumbnailFile;
-  File? _thumbnailC1File;
-  File? _thumbnailC2File;
-  File? _thumbnailC3File;
+  UploadStats? uploadStats;
 
   void _pickImage() async {
     var pickedFile = await ImagePicker().pickImage(source: ImageSource.gallery);
-    _processImage(pickedFile);
+    _uploadImage(pickedFile);
   }
 
   void _clickImage() async {
     var pickedFile = await ImagePicker().pickImage(source: ImageSource.camera);
-    _processImage(pickedFile);
+    _uploadImage(pickedFile);
   }
 
-  _processImage(pickedFile) async {
+  _uploadImage(pickedFile) async {
+    Stopwatch stopwatch = Stopwatch()..start();
     EasyLoading.show(status: 'Loading...');
     try {
       setState(() {
@@ -63,42 +68,28 @@ class _MyHomePageState extends State<MyHomePage> {
           _file = File(pickedFile.path);
         }
       });
-      if (_file != null) {
-        var compressedFile = await ImageService.compressImage(
-          _file!.path,
-          compressWith: CompressWith.compute,
+      var downloadUrl = await CloudFirestoreHelper.uploadFile(
+        _file!,
+        'images/',
+        onProgress: (data) {
+          EasyLoading.show(status: '$data% uploaded');
+        },
+      );
+      stopwatch.stop();
+
+      setState(() {
+        uploadStats = UploadStats(
+          size: _file!.lengthSync(),
+          timeTakenToUpload: stopwatch.elapsed.inMilliseconds,
+          url: downloadUrl,
+          compressedSize: 0,
+          timeTakenToCompressed: 0,
+          totalTimeTaken: stopwatch.elapsed.inMilliseconds,
         );
-        var thumbnailFile = await ImageService.compressImage(
-          _file!.path,
-          quality: 1,
-          compressWith: CompressWith.compute,
-        );
-        var thumbnailC1File = await ImageService.compressImage(
-          thumbnailFile.path,
-          quality: 1,
-          compressWith: CompressWith.compute,
-        );
-        var thumbnailC2File = await ImageService.compressImage(
-          thumbnailC1File.path,
-          quality: 1,
-          compressWith: CompressWith.compute,
-        );
-        var thumbnailC3File = await ImageService.compressImage(
-          thumbnailC2File.path,
-          quality: 1,
-          compressWith: CompressWith.compute,
-        );
-        setState(() {
-          _compressedFile = compressedFile;
-          _thumbnailFile = thumbnailFile;
-          _thumbnailC1File = thumbnailC1File;
-          _thumbnailC2File = thumbnailC2File;
-          _thumbnailC3File = thumbnailC3File;
-        });
-      }
+      });
     } on Exception catch (e, s) {
       developer.log(
-        '_processImage',
+        '_uploadImage',
         error: e,
         stackTrace: s,
       );
@@ -116,12 +107,7 @@ class _MyHomePageState extends State<MyHomePage> {
       body: PageView(
         controller: PageController(),
         children: <Widget>[
-          _buildFileWidget(_file, 'Original'),
-          _buildFileWidget(_compressedFile, 'Compressed'),
-          _buildFileWidget(_thumbnailFile, 'Thumbnail'),
-          _buildFileWidget(_thumbnailC1File, 'C-1 Thumbnail'),
-          _buildFileWidget(_thumbnailC2File, 'C-2 Thumbnail'),
-          _buildFileWidget(_thumbnailC3File, 'C-3 Thumbnail'),
+          _buildFileWidget(_file, 'Original', uploadStats),
         ],
       ),
       floatingActionButton: Row(
@@ -142,7 +128,11 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
-  _buildFileWidget(File? file, String label) {
+  _buildFileWidget(
+    File? file,
+    String label,
+    UploadStats? uploadStats,
+  ) {
     if (file != null) {
       return Container(
         color: Colors.black.withOpacity(0.8),
@@ -166,6 +156,9 @@ class _MyHomePageState extends State<MyHomePage> {
                 ],
               ),
             ),
+            _buildLabelWidget(
+              'Upload Stats',
+            ),
           ],
         ),
       );
@@ -188,4 +181,22 @@ class _MyHomePageState extends State<MyHomePage> {
       ),
     );
   }
+}
+
+class UploadStats {
+  String url;
+  int size;
+  int timeTakenToCompressed;
+  int compressedSize;
+  int timeTakenToUpload;
+  int totalTimeTaken;
+
+  UploadStats({
+    required this.url,
+    required this.size,
+    required this.timeTakenToCompressed,
+    required this.compressedSize,
+    required this.timeTakenToUpload,
+    required this.totalTimeTaken,
+  });
 }
