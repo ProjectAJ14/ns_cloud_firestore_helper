@@ -109,14 +109,14 @@ class _ImageUploadWidgetState extends State<ImageUploadWidget> {
     try {
       if (pickedFile != null) {
         fileStatsOG = FileStats(File(pickedFile.path));
-        fileStatsOG!.size = fileStatsOG!.file.lengthSync();
+        fileStatsOG!.size = await fileStatsOG!.file.length();
         setState(() {});
       }
       if (compress) {
         var compressedFile = await ImageService.compressImage(
           fileStatsOG!.file.path,
         );
-        fileStatsOG!.compressedSize = compressedFile.lengthSync();
+        fileStatsOG!.compressedSize = await compressedFile.length();
         fileStatsOG!.url = await CloudFirestoreHelper.uploadImageFile(
           compressedFile,
           'images/',

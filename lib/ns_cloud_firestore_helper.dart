@@ -5,9 +5,9 @@ import 'dart:io';
 
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
-import 'package:ns_cloud_firestore_helper/utils/constants.dart';
 
 import 'ns_cloud_firestore_helper.dart';
+import 'src/utils/constants.dart';
 
 export 'src/image_service.dart';
 

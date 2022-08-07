@@ -1,136 +1,103 @@
+import 'dart:developer' as developer;
 import 'dart:io';
-import 'dart:isolate';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as image_lib;
+import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 
-import '../utils/constants.dart';
-
-enum CompressWith {
-  isolate,
-  compute,
-  mainThread,
-}
-
-/// Object to send to compute.
-class ComputeMessage {
-  final String path;
-  final int quality;
-  final String compressedImagePath;
-
-  ComputeMessage({
-    required this.path,
-    required this.quality,
-    required this.compressedImagePath,
-  });
-}
-
-/// Object to send to isolate.
-class IsolateMessage {
-  final String path;
-  final int quality;
-  final String compressedImagePath;
-  final SendPort sendPort;
-
-  IsolateMessage({
-    required this.path,
-    required this.quality,
-    required this.compressedImagePath,
-    required this.sendPort,
-  });
-}
+import 'models/compress_type.dart';
+import 'models/compute_message.dart';
+import 'utils/constants.dart';
+import 'utils/methods.dart';
 
 /// This class is used to compress images.
 class ImageService {
   /// This method is used to compress an image from image path
   /// and return compressed image.
   static Future<File> compressImage(
-    String path, {
+    String filePath, {
     int quality = defaultQuality,
-    CompressWith compressWith = CompressWith.compute,
   }) async {
     final Stopwatch stopwatch = Stopwatch()..start();
-    File compressedFile;
+
     final tempDir = await getTemporaryDirectory();
     final tempDirPath = tempDir.path;
-    int rand = math.Random().nextInt(10000);
-    final compressedImagePath = '$tempDirPath/image_$rand';
-    switch (compressWith) {
-      case CompressWith.isolate:
-        ReceivePort receivePort = ReceivePort();
-        IsolateMessage message = IsolateMessage(
-          path: path,
-          quality: quality,
-          compressedImagePath: compressedImagePath,
-          sendPort: receivePort.sendPort,
-        );
-        final isolate =
-            await Isolate.spawn<IsolateMessage>(performIsolateTask, message);
-        final result = await receivePort.first;
-        isolate.kill(priority: Isolate.immediate);
-        compressedFile = File(result);
-        break;
-      case CompressWith.compute:
-        ComputeMessage message = ComputeMessage(
-          path: path,
-          quality: quality,
-          compressedImagePath: compressedImagePath,
-        );
-        compressedFile = await compute(performComputeTask, message);
-        break;
-      case CompressWith.mainThread:
-        compressedFile = await _compressImage(
-          path,
-          quality: quality,
-          compressedImagePath: compressedImagePath,
-        );
-        break;
-    }
+    int postFix = math.Random().nextInt(1000);
+    int perFix = math.Random().nextInt(1000);
+    final tempPath = '$tempDirPath/temp_${perFix}_$postFix';
+
+    String extension = path.extension(filePath); // '.png'
+
+    CompressType compressType = compressQuality(
+      extension,
+      await File(filePath).length(),
+      quality,
+    );
+
+    ComputeMessage message = ComputeMessage(
+      filePath: filePath,
+      compressType: compressType,
+      tempPath: tempPath,
+    );
+
+    return await _computeTask(
+      filePath,
+      compressType: compressType,
+      tempPath: tempPath,
+    );
+
+    File compressedFile = await compute(performComputeTask, message);
     stopwatch.stop();
-    debugPrint(
-      'Compressed image[$quality] in ${stopwatch.elapsedMilliseconds}ms',
+    developer.log(
+      'Compressed image[$filePath][$quality][$extension] in '
+      '${stopwatch.elapsed.inSeconds}s [$tempPath]',
     );
     return compressedFile;
   }
 
   /// This function is to compress image
-  static Future<File> _compressImage(
-    String path, {
-    required String compressedImagePath,
-    int quality = defaultQuality,
+  static Future<File> _computeTask(
+    String filePath, {
+    required String tempPath,
+    required CompressType compressType,
   }) async {
+    developer.log(
+      '_computeTask[$filePath][$compressType][$tempPath]',
+    );
     image_lib.Image? image =
-        image_lib.decodeImage(File(path).readAsBytesSync());
+        image_lib.decodeImage(File(filePath).readAsBytesSync());
+
     image_lib.Image smallerImage = image_lib.copyResize(
       image!,
       width: image.width ~/ 2,
     ); // choose the size here, it will maintain aspect ratio
-    var compressedImage = File('$compressedImagePath.jpg')
-      ..writeAsBytesSync(image_lib.encodeJpg(
-        smallerImage,
-        quality: quality,
-      ));
-    return compressedImage;
-  }
 
-  /// This function is to compress image in isolate
-  static void performIsolateTask(IsolateMessage message) async {
-    var file = await _compressImage(
-      message.path,
-      quality: message.quality,
-      compressedImagePath: message.compressedImagePath,
-    );
-    message.sendPort.send(file.path);
+    List<int> bytes = [];
+
+    if (compressType.isPng) {
+      bytes = image_lib.encodePng(
+        smallerImage,
+        level: compressType.quality,
+      );
+    } else {
+      bytes = image_lib.encodeJpg(
+        smallerImage,
+        quality: compressType.quality,
+      );
+    }
+
+    File compressedFile = File(tempPath)..writeAsBytes(bytes);
+    return compressedFile;
   }
 
   /// This function is to compress image using compute function
   static Future<File> performComputeTask(ComputeMessage message) async {
-    return await _compressImage(
-      message.path,
-      quality: message.quality,
-      compressedImagePath: message.compressedImagePath,
+    return await _computeTask(
+      message.filePath,
+      compressType: message.compressType,
+      tempPath: message.tempPath,
     );
   }
 }
